@@ -1,0 +1,496 @@
+# Combined MongoDB Aggregation Queries
+# Database: sales_db
+# Run in mongosh. Execute dataset insert sections once, then run the query blocks.
+
+// =====================================================
+// Dataset A: Sales (from L0: Mongo Aggregations Sales Data Analysis)
+// =====================================================
+use sales_db;
+db.sales.drop();
+db.sales.insertMany([
+  { "saleId": 1, "product": "Laptop",     "category": "Electronics", "amount": 800,  "date": "2024-01-10", "region": "North" },
+  { "saleId": 2, "product": "Mobile",     "category": "Electronics", "amount": 500,  "date": "2024-02-15", "region": "South" },
+  { "saleId": 3, "product": "Shoes",      "category": "Fashion",     "amount": 200,  "date": "2024-01-20", "region": "North" },
+  { "saleId": 4, "product": "TV",         "category": "Electronics", "amount": 1000, "date": "2024-03-05", "region": "West" },
+  { "saleId": 5, "product": "T-shirt",    "category": "Fashion",     "amount": 50,   "date": "2024-02-25", "region": "East" },
+  { "saleId": 6, "product": "Headphones", "category": "Electronics", "amount": 150,  "date": "2024-04-01", "region": "South" },
+  { "saleId": 7, "product": "Watch",      "category": "Fashion",     "amount": 300,  "date": "2024-03-15", "region": "North" },
+  { "saleId": 8, "product": "Laptop",     "category": "Electronics", "amount": 850,  "date": "2024-02-12", "region": "West" },
+  { "saleId": 9, "product": "Shoes",      "category": "Fashion",     "amount": 250,  "date": "2024-04-18", "region": "South" }
+]);
+
+// Helper: derive YYYY-MM from ISO date string
+const addMonthKey = [
+  {
+    $addFields: {
+      ym: {
+        $dateToString: { format: "%Y-%m", date: { $dateFromString: { dateString: "$date" } } }
+      }
+    }
+  }
+];
+
+// -----------------------------------------------------
+// Sales Q1: Total sales amount for each product category
+// -----------------------------------------------------
+db.sales.aggregate([
+  { $group: { _id: "$category", totalSales: { $sum: "$amount" } } },
+  { $sort: { _id: 1 } }
+]);
+
+// -----------------------------------------------------
+// Sales Q2: Month-wise total sales amount (YYYY-MM)
+// -----------------------------------------------------
+db.sales.aggregate([
+  ...addMonthKey,
+  { $group: { _id: "$ym", totalSales: { $sum: "$amount" } } },
+  { $sort: { _id: 1 } }
+]);
+
+// -----------------------------------------------------
+// Sales Q3: Highest-selling product by revenue (top 1)
+// -----------------------------------------------------
+db.sales.aggregate([
+  { $group: { _id: "$product", revenue: { $sum: "$amount" } } },
+  { $sort: { revenue: -1 } },
+  { $limit: 1 }
+]);
+
+// -----------------------------------------------------
+// Sales Q4: Average sale amount across all transactions
+// -----------------------------------------------------
+db.sales.aggregate([
+  { $group: { _id: null, averageSale: { $avg: "$amount" } } },
+  { $project: { _id: 0, averageSale: { $round: ["$averageSale", 2] } } }
+]);
+
+// -----------------------------------------------------
+// Sales Q5: Count the number of sales made in each month (YYYY-MM)
+// -----------------------------------------------------
+db.sales.aggregate([
+  ...addMonthKey,
+  { $group: { _id: "$ym", count: { $sum: 1 } } },
+  { $sort: { _id: 1 } }
+]);
+
+// -----------------------------------------------------
+// Sales Q6: Total sales per region
+// -----------------------------------------------------
+db.sales.aggregate([
+  { $group: { _id: "$region", totalSales: { $sum: "$amount" } } },
+  { $sort: { _id: 1 } }
+]);
+
+// -----------------------------------------------------
+// Sales Q7: Top 3 highest revenue-generating products
+// -----------------------------------------------------
+db.sales.aggregate([
+  { $group: { _id: "$product", revenue: { $sum: "$amount" } } },
+  { $sort: { revenue: -1 } },
+  { $limit: 3 }
+]);
+
+// -----------------------------------------------------
+// Sales Q8: Total number of sales transactions per category
+// -----------------------------------------------------
+db.sales.aggregate([
+  { $group: { _id: "$category", transactions: { $sum: 1 } } },
+  { $sort: { _id: 1 } }
+]);
+
+// -----------------------------------------------------
+// Sales Q9: Average sales amount for each region
+// -----------------------------------------------------
+db.sales.aggregate([
+  { $group: { _id: "$region", averageSale: { $avg: "$amount" } } },
+  { $project: { averageSale: { $round: ["$averageSale", 2] } } },
+  { $sort: { _id: 1 } }
+]);
+
+// -----------------------------------------------------
+// Sales Q10: Total sales for Electronics and Fashion separately
+// -----------------------------------------------------
+db.sales.aggregate([
+  { $match: { category: { $in: ["Electronics", "Fashion"] } } },
+  { $group: { _id: "$category", totalSales: { $sum: "$amount" } } },
+  { $sort: { _id: 1 } }
+]);
+
+
+// =====================================================
+// Dataset B: Customers & Orders (from L0: Customers and Order Analysis)
+// =====================================================
+db.customers.drop();
+db.orders.drop();
+db.customers.insertMany([
+  { _id: "C1001", name: "Alice",   city: "New York" },
+  { _id: "C1002", name: "Bob",     city: "Los Angeles" },
+  { _id: "C1003", name: "Charlie", city: "Chicago" },
+  { _id: "C1004", name: "David",   city: "Houston" },
+  { _id: "C1005", name: "Eve",     city: "Seattle" }
+]);
+
+db.orders.insertMany([
+  { _id: 1, customerId: "C1001", amount: 500,  product: "Laptop" },
+  { _id: 2, customerId: "C1002", amount: 1200, product: "Phone" },
+  { _id: 3, customerId: "C1001", amount: 300,  product: "Headphones" },
+  { _id: 4, customerId: "C1003", amount: 700,  product: "Monitor" },
+  { _id: 5, customerId: "C1004", amount: 400,  product: "Keyboard" },
+  { _id: 6, customerId: "C1002", amount: 800,  product: "Tablet" },
+  { _id: 7, customerId: "C1005", amount: 900,  product: "Smartwatch" }
+]);
+
+// -----------------------------------------------------
+// Cust/Orders Q1: Total amount spent by each customer
+// -----------------------------------------------------
+db.orders.aggregate([
+  { $group: { _id: "$customerId", totalSpent: { $sum: "$amount" } } },
+  { $sort: { totalSpent: -1 } }
+]);
+
+// -----------------------------------------------------
+// Cust/Orders Q2: Order details with corresponding customer info
+// -----------------------------------------------------
+db.orders.aggregate([
+  { $lookup: { from: "customers", localField: "customerId", foreignField: "_id", as: "customer" } },
+  { $unwind: "$customer" },
+  { $project: { _id: 1, product: 1, amount: 1, customerId: 1, customerName: "$customer.name", city: "$customer.city" } }
+]);
+
+// -----------------------------------------------------
+// Cust/Orders Q3: Orders where amount > 500
+// -----------------------------------------------------
+db.orders.aggregate([
+  { $match: { amount: { $gt: 500 } } },
+  { $sort: { amount: -1 } }
+]);
+
+// -----------------------------------------------------
+// Cust/Orders Q4: Average order amount per customer
+// -----------------------------------------------------
+db.orders.aggregate([
+  { $group: { _id: "$customerId", avgOrder: { $avg: "$amount" }, orders: { $sum: 1 } } },
+  { $project: { avgOrder: { $round: ["$avgOrder", 2] }, orders: 1 } },
+  { $sort: { _id: 1 } }
+]);
+
+// -----------------------------------------------------
+// Cust/Orders Q5: All orders with customer details, ensuring association
+// (Inner join semantics: only orders that have a matching customer)
+// -----------------------------------------------------
+db.orders.aggregate([
+  { $lookup: { from: "customers", localField: "customerId", foreignField: "_id", as: "customer" } },
+  { $match: { customer: { $ne: [] } } },
+  { $unwind: "$customer" },
+  { $project: { _id: 1, product: 1, amount: 1, customerId: 1, customerName: "$customer.name", city: "$customer.city" } }
+]);
+
+
+// =====================================================
+// Dataset C: E-Commerce Orders (from L1: E-Commerce Sales Data Analysis)
+// =====================================================
+use ecommerce_db;
+db.orders.drop();
+db.orders.insertMany([
+  { "username": "alice",  "productName": "iPhone 14",   "category": "Electronics",     "quantity": 2, "totalPrice": 2000, "orderDate": "2024-11-12T10:30:00Z", "status": "Delivered" },
+  { "username": "bob",    "productName": "T-shirt",     "category": "Clothing",        "quantity": 5, "totalPrice": 100,  "orderDate": "2024-11-15T13:45:00Z", "status": "Delivered" },
+  { "username": "charlie","productName": "iPhone 14",   "category": "Electronics",     "quantity": 1, "totalPrice": 1000, "orderDate": "2024-12-01T09:00:00Z", "status": "Cancelled" },
+  { "username": "daisy",  "productName": "T-shirt",     "category": "Clothing",        "quantity": 2, "totalPrice": 40,   "orderDate": "2024-12-10T14:00:00Z", "status": "Pending" },
+  { "username": "edward", "productName": "Coffee Maker", "category": "Home Appliances",  "quantity": 1, "totalPrice": 150,  "orderDate": "2025-01-05T16:30:00Z", "status": "Shipped" },
+  { "username": "fatima", "productName": "Blender",     "category": "Home Appliances",  "quantity": 1, "totalPrice": 120,  "orderDate": "2025-01-15T12:10:00Z", "status": "Delivered" },
+  { "username": "george", "productName": "iPhone 14",   "category": "Electronics",     "quantity": 1, "totalPrice": 1000, "orderDate": "2025-02-01T10:00:00Z", "status": "Delivered" },
+  { "username": "harry",  "productName": "Shoes",       "category": "Clothing",        "quantity": 3, "totalPrice": 210,  "orderDate": "2025-02-10T17:20:00Z", "status": "Delivered" },
+  { "username": "isla",   "productName": "T-shirt",     "category": "Clothing",        "quantity": 4, "totalPrice": 80,   "orderDate": "2025-03-01T09:30:00Z", "status": "Shipped" },
+  { "username": "jake",   "productName": "AirPods",     "category": "Electronics",     "quantity": 2, "totalPrice": 300,  "orderDate": "2025-03-12T14:45:00Z", "status": "Delivered" },
+  { "username": "keira",  "productName": "Microwave",    "category": "Home Appliances",  "quantity": 1, "totalPrice": 220,  "orderDate": "2025-03-25T11:00:00Z", "status": "Delivered" },
+  { "username": "liam",   "productName": "AirPods",     "category": "Electronics",     "quantity": 1, "totalPrice": 150,  "orderDate": "2025-04-01T08:15:00Z", "status": "Cancelled" },
+  { "username": "mona",   "productName": "Shoes",       "category": "Clothing",        "quantity": 2, "totalPrice": 140,  "orderDate": "2025-04-10T15:25:00Z", "status": "Delivered" },
+  { "username": "nathan", "productName": "iPhone 14",   "category": "Electronics",     "quantity": 1, "totalPrice": 1000, "orderDate": "2025-04-20T18:10:00Z", "status": "Delivered" },
+  { "username": "olivia", "productName": "T-shirt",     "category": "Clothing",        "quantity": 3, "totalPrice": 60,   "orderDate": "2025-04-28T20:45:00Z", "status": "Delivered" }
+]);
+
+// Helper: derive YYYY-MM from orderDate (ISO 8601) for monthly analyses
+const addOrderMonthKey = [
+  {
+    $addFields: {
+      orderMonth: {
+        $dateToString: {
+          format: "%Y-%m",
+          timezone: "UTC",
+          date: { $dateFromString: { dateString: "$orderDate" } }
+        }
+      }
+    }
+  }
+];
+
+// -----------------------------------------------------
+// E-Comm Q1: Top 3 best-selling products by quantity sold
+// -----------------------------------------------------
+db.orders.aggregate([
+  { $group: { _id: "$productName", totalQty: { $sum: "$quantity" } } },
+  { $sort: { totalQty: -1, _id: 1 } },
+  { $limit: 3 }
+]);
+
+// -----------------------------------------------------
+// E-Comm Q2: Total revenue for each product category
+// -----------------------------------------------------
+db.orders.aggregate([
+  { $group: { _id: "$category", revenue: { $sum: "$totalPrice" } } },
+  { $sort: { revenue: -1 } }
+]);
+
+// -----------------------------------------------------
+// E-Comm Q3: Average total price of all orders
+// -----------------------------------------------------
+db.orders.aggregate([
+  { $group: { _id: null, avgTotalPrice: { $avg: "$totalPrice" } } },
+  { $project: { _id: 0, avgTotalPrice: { $round: ["$avgTotalPrice", 2] } } }
+]);
+
+// -----------------------------------------------------
+// E-Comm Q4: Number of orders placed each month (YYYY-MM)
+// -----------------------------------------------------
+db.orders.aggregate([
+  ...addOrderMonthKey,
+  { $group: { _id: "$orderMonth", orders: { $sum: 1 } } },
+  { $sort: { _id: 1 } }
+]);
+
+// -----------------------------------------------------
+// E-Comm Q5: Percentage of canceled orders
+// -----------------------------------------------------
+db.orders.aggregate([
+  { $group: {
+      _id: null,
+      totalOrders: { $sum: 1 },
+      canceledOrders: { $sum: { $cond: [ { $eq: ["$status", "Cancelled"] }, 1, 0 ] } }
+  } },
+  { $project: {
+      _id: 0,
+      canceledPercentage: { $round: [ { $multiply: [ { $divide: ["$canceledOrders", "$totalOrders"] }, 100 ] }, 2 ] }
+  } }
+]);
+
+// -----------------------------------------------------
+// E-Comm Q6: Top product category by revenue (top 1)
+// -----------------------------------------------------
+db.orders.aggregate([
+  { $group: { _id: "$category", revenue: { $sum: "$totalPrice" } } },
+  { $sort: { revenue: -1 } },
+  { $limit: 1 }
+]);
+
+// -----------------------------------------------------
+// E-Comm Q7: Most frequently ordered product (by order count)
+// -----------------------------------------------------
+db.orders.aggregate([
+  { $group: { _id: "$productName", orders: { $sum: 1 } } },
+  { $sort: { orders: -1, _id: 1 } },
+  { $limit: 1 }
+]);
+
+// -----------------------------------------------------
+// E-Comm Q8: Monthly revenue trend (YYYY-MM)
+// -----------------------------------------------------
+db.orders.aggregate([
+  ...addOrderMonthKey,
+  { $group: { _id: "$orderMonth", revenue: { $sum: "$totalPrice" } } },
+  { $sort: { _id: 1 } }
+]);
+
+// -----------------------------------------------------
+// E-Comm Q9: Count of orders by status
+// -----------------------------------------------------
+db.orders.aggregate([
+  { $group: { _id: "$status", count: { $sum: 1 } } },
+  { $sort: { _id: 1 } }
+]);
+
+// -----------------------------------------------------
+// E-Comm Q10: Total number of orders and quantity sold
+// -----------------------------------------------------
+db.orders.aggregate([
+  { $group: { _id: null, totalOrders: { $sum: 1 }, totalQuantity: { $sum: "$quantity" } } },
+  { $project: { _id: 0, totalOrders: 1, totalQuantity: 1 } }
+]);
+
+
+// =====================================================
+// Dataset D: Library Management (from L1: Library Management Aggregation Assignment)
+// =====================================================
+use library_db;
+db.books.drop();
+db.borrowers.drop();
+db.loans.drop();
+
+db.books.insertMany([
+  { _id: "Book1", title: "The Alchemist",            author: "Paulo Coelho",     genre: "Fiction",     publishedYear: 1988 },
+  { _id: "Book2", title: "Clean Code",               author: "Robert C. Martin", genre: "Programming", publishedYear: 2008 },
+  { _id: "Book3", title: "1984",                     author: "George Orwell",    genre: "Dystopian",   publishedYear: 1949 },
+  { _id: "Book4", title: "Atomic Habits",            author: "James Clear",      genre: "Self-help",   publishedYear: 2018 },
+  { _id: "Book5", title: "The Pragmatic Programmer", author: "Andy Hunt",        genre: "Programming", publishedYear: 1999 }
+]);
+
+db.borrowers.insertMany([
+  { _id: "User1", name: "Alice",   email: "alice@example.com",   membershipDate: ISODate("2023-01-15") },
+  { _id: "User2", name: "Bob",     email: "bob@example.com",     membershipDate: ISODate("2023-02-10") },
+  { _id: "User3", name: "Charlie", email: "charlie@example.com", membershipDate: ISODate("2023-03-05") },
+  { _id: "User4", name: "David",   email: "david@example.com",   membershipDate: ISODate("2023-04-12") }
+]);
+
+db.loans.insertMany([
+  { _id: "Loan1", bookId: "Book1", borrowerId: "User1", loanDate: ISODate("2023-05-01"), returnDate: ISODate("2023-05-15"), status: "Returned" },
+  { _id: "Loan2", bookId: "Book2", borrowerId: "User1", loanDate: ISODate("2023-05-20"), returnDate: null,                          status: "Borrowed" },
+  { _id: "Loan3", bookId: "Book3", borrowerId: "User2", loanDate: ISODate("2023-04-10"), returnDate: ISODate("2023-04-25"), status: "Returned" },
+  { _id: "Loan4", bookId: "Book2", borrowerId: "User3", loanDate: ISODate("2023-05-05"), returnDate: null,                          status: "Borrowed" },
+  { _id: "Loan5", bookId: "Book4", borrowerId: "User1", loanDate: ISODate("2023-03-01"), returnDate: ISODate("2023-03-10"), status: "Returned" },
+  { _id: "Loan6", bookId: "Book1", borrowerId: "User4", loanDate: ISODate("2023-05-01"), returnDate: ISODate("2023-05-15"), status: "Returned" },
+  { _id: "Loan7", bookId: "Book5", borrowerId: "User3", loanDate: ISODate("2023-06-01"), returnDate: null,                          status: "Borrowed" },
+  { _id: "Loan8", bookId: "Book2", borrowerId: "User1", loanDate: ISODate("2023-06-15"), returnDate: null,                          status: "Borrowed" },
+  { _id: "Loan9", bookId: "Book2", borrowerId: "User1", loanDate: ISODate("2023-07-01"), returnDate: null,                          status: "Borrowed" }
+]);
+
+// -----------------------------------------------------
+// Library Q1: List of books borrowed by each borrower
+// -----------------------------------------------------
+db.loans.aggregate([
+  { $lookup: { from: "books", localField: "bookId", foreignField: "_id", as: "book" } },
+  { $unwind: "$book" },
+  { $lookup: { from: "borrowers", localField: "borrowerId", foreignField: "_id", as: "borrower" } },
+  { $unwind: "$borrower" },
+  { $group: {
+      _id: "$borrowerId",
+      borrowerName: { $first: "$borrower.name" },
+      books: { $addToSet: "$book.title" },
+      totalLoans: { $sum: 1 }
+  } },
+  { $sort: { borrowerName: 1 } }
+]);
+
+// -----------------------------------------------------
+// Library Q2: Top 3 most borrowed books
+// -----------------------------------------------------
+db.loans.aggregate([
+  { $group: { _id: "$bookId", borrowCount: { $sum: 1 } } },
+  { $lookup: { from: "books", localField: "_id", foreignField: "_id", as: "book" } },
+  { $unwind: "$book" },
+  { $project: { _id: 0, bookId: "$book._id", title: "$book.title", borrowCount: 1 } },
+  { $sort: { borrowCount: -1, title: 1 } },
+  { $limit: 3 }
+]);
+
+// -----------------------------------------------------
+// Library Q3: Borrower’s loan history with book details (borrowerId = User1)
+// -----------------------------------------------------
+db.loans.aggregate([
+  { $match: { borrowerId: "User1" } },
+  { $lookup: { from: "books", localField: "bookId", foreignField: "_id", as: "book" } },
+  { $unwind: "$book" },
+  { $project: {
+      _id: 1,
+      borrowerId: 1,
+      bookId: 1,
+      bookTitle: "$book.title",
+      loanDate: 1,
+      returnDate: 1,
+      status: 1
+  } },
+  { $sort: { loanDate: 1 } }
+]);
+
+// -----------------------------------------------------
+// Library Q4: Borrowers who have borrowed more than 2 books (by loan count)
+// -----------------------------------------------------
+db.loans.aggregate([
+  { $group: { _id: "$borrowerId", borrowCount: { $sum: 1 } } },
+  { $match: { borrowCount: { $gt: 2 } } },
+  { $lookup: { from: "borrowers", localField: "_id", foreignField: "_id", as: "borrower" } },
+  { $unwind: "$borrower" },
+  { $project: { _id: 0, borrowerId: "$borrower._id", borrowerName: "$borrower.name", borrowCount: 1 } },
+  { $sort: { borrowCount: -1, borrowerName: 1 } }
+]);
+
+// -----------------------------------------------------
+// Library Q5: Full report of all loans (with borrower name and book title)
+// -----------------------------------------------------
+db.loans.aggregate([
+  { $lookup: { from: "borrowers", localField: "borrowerId", foreignField: "_id", as: "borrower" } },
+  { $unwind: "$borrower" },
+  { $lookup: { from: "books", localField: "bookId", foreignField: "_id", as: "book" } },
+  { $unwind: "$book" },
+  { $project: {
+      _id: 1,
+      borrowerId: 1,
+      borrowerName: "$borrower.name",
+      borrowerEmail: "$borrower.email",
+      bookId: 1,
+      bookTitle: "$book.title",
+      loanDate: 1,
+      returnDate: 1,
+      status: 1
+  } },
+  { $sort: { loanDate: 1, borrowerName: 1 } }
+]);
+
+// -----------------------------------------------------
+// Library Q6: Genre-wise count of borrowed books
+// -----------------------------------------------------
+db.loans.aggregate([
+  { $lookup: { from: "books", localField: "bookId", foreignField: "_id", as: "book" } },
+  { $unwind: "$book" },
+  { $group: { _id: "$book.genre", borrowCount: { $sum: 1 } } },
+  { $sort: { borrowCount: -1, _id: 1 } }
+]);
+
+// -----------------------------------------------------
+// Library Q7: Current borrowed books (status = "Borrowed") with borrower and book title
+// -----------------------------------------------------
+db.loans.aggregate([
+  { $match: { status: "Borrowed" } },
+  { $lookup: { from: "borrowers", localField: "borrowerId", foreignField: "_id", as: "borrower" } },
+  { $unwind: "$borrower" },
+  { $lookup: { from: "books", localField: "bookId", foreignField: "_id", as: "book" } },
+  { $unwind: "$book" },
+  { $project: { _id: 1, borrowerId: 1, borrowerName: "$borrower.name", bookId: 1, bookTitle: "$book.title", loanDate: 1, status: 1 } },
+  { $sort: { borrowerName: 1, bookTitle: 1 } }
+]);
+
+// -----------------------------------------------------
+// Library Q8: Number of returned books per borrower
+// -----------------------------------------------------
+db.loans.aggregate([
+  { $match: { status: "Returned" } },
+  { $group: { _id: "$borrowerId", returnedCount: { $sum: 1 } } },
+  { $lookup: { from: "borrowers", localField: "_id", foreignField: "_id", as: "borrower" } },
+  { $unwind: "$borrower" },
+  { $project: { _id: 0, borrowerId: "$borrower._id", borrowerName: "$borrower.name", returnedCount: 1 } },
+  { $sort: { returnedCount: -1, borrowerName: 1 } }
+]);
+
+// -----------------------------------------------------
+// Library Q9: Borrowers who borrowed multiple genres
+// -----------------------------------------------------
+db.loans.aggregate([
+  { $lookup: { from: "books", localField: "bookId", foreignField: "_id", as: "book" } },
+  { $unwind: "$book" },
+  { $group: { _id: "$borrowerId", genres: { $addToSet: "$book.genre" } } },
+  { $project: { genres: 1, genresCount: { $size: "$genres" } } },
+  { $match: { genresCount: { $gt: 1 } } },
+  { $lookup: { from: "borrowers", localField: "_id", foreignField: "_id", as: "borrower" } },
+  { $unwind: "$borrower" },
+  { $project: { _id: 0, borrowerId: "$borrower._id", borrowerName: "$borrower.name", genres: 1, genresCount: 1 } },
+  { $sort: { borrowerName: 1 } }
+]);
+
+// -----------------------------------------------------
+// Library Q10: List borrowers with total borrow count and names
+// -----------------------------------------------------
+db.loans.aggregate([
+  { $group: { _id: "$borrowerId", totalBorrows: { $sum: 1 } } },
+  { $lookup: { from: "borrowers", localField: "_id", foreignField: "_id", as: "borrower" } },
+  { $unwind: "$borrower" },
+  { $project: { _id: 0, borrowerId: "$borrower._id", borrowerName: "$borrower.name", totalBorrows: 1 } },
+  { $sort: { totalBorrows: -1, borrowerName: 1 } }
+]);
